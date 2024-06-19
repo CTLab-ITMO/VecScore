@@ -64,7 +64,7 @@ def calculate_metrics(all_labels, all_preds, test_type="train"):
     
     test_srcc, _ = stats.spearmanr(all_preds, all_labels)
     test_plcc, _ = stats.pearsonr(all_preds, all_labels)
-    return {f'{test_type}_Test_SRCC': test_srcc, f'{test_type}_Test_PLCC': test_plcc}
+    return {f'{test_type}_SRCC': test_srcc, f'{test_type}_PLCC': test_plcc}
 
 
 class ModelTrainer:
@@ -93,9 +93,13 @@ class ModelTrainer:
         self.results = []
         self.model_predict = model_predict
 
-        self.metrics_folder = os.path.join(data_folder, "metrics")
+        self.save_every_k_epoch = 10
+
+        self.model_folder = os.path.join(data_folder, "experiments", model_name)
+        
         os.makedirs(self.metrics_folder, exist_ok=True)
-        self.metrics_path = os.path.join(data_folder, f"{model_name}_metrics.csv")
+        self.metrics_path = os.path.join(self.model_folder, f"metrics.csv")
+        self.weights_folder =  os.path.join(self.model_folder, "weights")
     
 
     def run(self):
@@ -110,8 +114,8 @@ class ModelTrainer:
             print(epoch_results)
             self.results.append(epoch_results)
             pd.DataFrame(self.results).to_csv(self.metrics_path, index=False)
-            
-            torch.save(self.model.state_dict(), f"{self.weights_folder}/model_{epoch}.pt")
+            if epoch % self.save_every_k_epoch == 0:
+                torch.save(self.model.state_dict(), f"{self.weights_folder}/model_{epoch}.pt")
 
 
     def train_model(self, epoch):
