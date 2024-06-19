@@ -97,9 +97,10 @@ class ModelTrainer:
 
         self.model_folder = os.path.join(data_folder, "experiments", model_name)
         
-        os.makedirs(self.metrics_folder, exist_ok=True)
         self.metrics_path = os.path.join(self.model_folder, f"metrics.csv")
         self.weights_folder =  os.path.join(self.model_folder, "weights")
+        os.makedirs(self.weights_folder, exist_ok=True)
+
     
 
     def run(self):
