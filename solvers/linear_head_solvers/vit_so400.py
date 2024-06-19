@@ -31,26 +31,26 @@ class HeadModel(nn.Module):
             nn.BatchNorm1d(in_features // 4),  # Batch normalization after the second linear layer
             nn.ReLU())
         
-        self.classifier = nn.Sequential(
+        self.regressor = nn.Sequential(
             nn.Linear(in_features=in_features // 4, out_features=1),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.block1(x)
         x = self.block2(x)
-        x = self.classifier(x)
+        x = self.regressor(x)
         return x
 
 
-class BinaryClassifier(nn.Module):
-    def __init__(self, feature_extractor, classifier):
-        super(BinaryClassifier, self).__init__()
+class LinearRegressor(nn.Module):
+    def __init__(self, feature_extractor, regressor):
+        super(LinearRegressor, self).__init__()
         self.feature_extractor = feature_extractor
-        self.classifier = classifier
+        self.regressor = regressor
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.feature_extractor.encode_image(x)
-        x = self.classifier(x)
+        x = self.regressor(x)
         return x
 
 
@@ -78,37 +78,33 @@ def freeze_layers(m):
             for param in child.parameters():
                 param.requires_grad_(False)
     return m
-                
 
-model_name = 'vit_so400_markup_train_data'
+
+pre_folder = "/home/jupyter-kazancev.danil7@wb-2ede4/projects/anti_spam/work/VecScore/"
+
+df = pd.read_csv(os.path.join(pre_folder, 'dataframes/loaded_parsed_toloka_dataset.csv'))
+model_name = 'vit_so400'
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 feature_extractor, preproces_vit = create_model_from_pretrained('hf-hub:timm/ViT-SO400M-14-SigLIP')
 feature_extractor = freeze_layers(feature_extractor)
+
 head_model = HeadModel(1152)
 
-model = BinaryClassifier(feature_extractor, head_model)
-
-
-
-
+model = LinearRegressor(feature_extractor, head_model)
 
 
 if __name__ == "__main__":
     
     criterion = nn.MSELoss()
-    pre_folder = "/mnt/nvme0/jupyter-kazancev.danil7@wb-2ede4/datasets/markup_full_data_14_03_2024"
-    data_folder = os.path.join(pre_folder, "datasets/markup_full_data")
-    
+
     optimizer_ft = optim.AdamW(head_model.parameters(), lr=0.001)
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=20, gamma=0.5)
     
-    train_df = pd.read_csv(os.path.join(pre_folder, "dataframes/train.csv"))
-    val_df = pd.read_csv(os.path.join(pre_folder, "dataframes/val.csv"))
 
-    trainer = ModelTrainer(train_df=train_df,val_df = val_df, model=model, criterion=criterion, 
+    trainer = ModelTrainer(df=df, model=model, criterion=criterion, 
                           optimizer=optimizer_ft, scheduler=exp_lr_scheduler, num_epochs=15,
                  n_epoch_val=1, model_predict=model_predict, model_name=model_name, processor=processor,
-                          data_folder=data_folder, batch_size=400, num_workers=50)
+                          data_folder=pre_folder, batch_size=400, num_workers=50)
 
     trainer.run()
