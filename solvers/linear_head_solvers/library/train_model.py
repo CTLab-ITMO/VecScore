@@ -79,7 +79,7 @@ class ModelTrainer:
         self.scheduler = scheduler
         self.num_epochs = num_epochs
 
-        train_df, val_df = train_test_split(df, test_size=0.2, random_state=42)
+        train_df, val_df = train_test_split(df, test_size=0.1, random_state=42)
         
         train_imgs, train_labels = train_df.img_path.tolist(), train_df.final_mos.tolist()
         val_imgs, val_labels = val_df.img_path.tolist(), train_df.final_mos.tolist()
@@ -166,10 +166,8 @@ class ModelTrainer:
             probs = self.model_predict(inputs, grad=False, model=self.model, device=self.device)
             
             all_labels.extend(labels.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
+            all_probs.extend(probs.detach().cpu().numpy())
             all_paths.extend(paths)
-        
-        all_labels = np.array(all_labels)
-        all_preds = np.array(all_preds)
+
         metrics_data = calculate_metrics(all_labels, all_probs, "val")
         return self.model, metrics_data
