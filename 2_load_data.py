@@ -95,9 +95,9 @@ def load_photos_from_df_batched(df: pd.DataFrame, data_folder: str) -> pd.DataFr
 
 if __name__ == "__main__":
 
-    df_path = "dataframes/parsed_toloka_dataset.csv" 
+    df_path = "dataframes/llava_df.csv" 
     df = pd.read_csv(df_path)
     data_folder = os.path.abspath("toloka_parsed_data")
     os.makedirs(data_folder, exist_ok=True)
     result_df = load_photos_from_df_batched(df, data_folder)
-    result_df.to_csv("dataframes/loaded_parsed_toloka_dataset.csv", index=False)
+    result_df.to_csv("dataframes/loaded_parsed_toloka_dataset_llava.csv", index=False)

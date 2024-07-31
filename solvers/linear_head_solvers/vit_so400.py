@@ -120,7 +120,7 @@ if __name__ == "__main__":
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=20, gamma=0.5)
     
 
-    trainer = ModelTrainer(df=df, model=model, criterion=criterion, 
+    trainer = ModelTrainer(df, model=model, criterion=criterion, 
                           optimizer=optimizer_ft, scheduler=exp_lr_scheduler, num_epochs=15,
                  n_epoch_val=1, model_predict=model_predict, model_name=model_name, processor=processor,
                           data_folder=pre_folder, batch_size=400, num_workers=50)

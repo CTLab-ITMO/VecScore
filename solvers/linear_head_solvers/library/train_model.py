@@ -27,7 +27,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 import cv2
 import numpy as np
-
+import shutil
 
 
 class FolderDataset(Dataset):
@@ -56,15 +56,53 @@ class FolderDataset(Dataset):
         return len(self.paths)
 
 
+def log_images(image_paths: list[str], titles, plot_path):
+    image_paths, titles = image_paths[:50], titles[:50]
+    num_rows = int(sqrt(len(image_paths)))
+    num_cols = int(sqrt(len(image_paths)))
+    print(num_rows, num_cols)
+    fig, axes = plt.subplots(nrows=num_rows, ncols=num_cols, figsize=(13*num_cols, 10*num_rows))
+    images = [cv2.resize(cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB), (512, 512)) for img_path in image_paths]
+    for i, img in enumerate(images[:(num_rows*num_cols)]):
+        # img = plt.imshow(img)
+        row = i // num_cols
+        col = i % num_cols
+        # print(row, col)
+        ax = axes[row][col]
+        if titles:
+            ax.set_title(str(titles[i]))
+        ax.imshow(img)
+        ax.axis('off')
+    plt.savefig(plot_path)
 
-def calculate_metrics(all_labels, all_preds, test_type="train"):
+
+def calculate_metrics(all_labels, all_preds, img_paths, test_type="train"):
     
-    all_probs = np.array(all_preds).astype(np.float64)
-    all_probs = np.array(all_labels).astype(np.float64)
+    all_probs_ar = np.array(all_preds).astype(np.float64)
+    all_labels_ar = np.array(all_labels).astype(np.float64)
     
-    test_srcc, _ = stats.spearmanr(all_preds, all_labels)
-    test_plcc, _ = stats.pearsonr(all_preds, all_labels)
-    return {f'{test_type}_SRCC': test_srcc, f'{test_type}_PLCC': test_plcc}
+    test_srcc, _ = stats.spearmanr(all_probs_ar, all_labels_ar)
+    test_plcc, _ = stats.pearsonr(all_probs_ar, all_labels_ar)
+    
+    # Calculate absolute error
+    abs_error = np.abs(all_labels_ar - all_probs_ar)
+    
+    # Calculate absolute error
+    abs_error = np.abs(all_labels_ar - all_probs_ar)
+    
+    # Get indices of 20 worst predictions
+    worst_indices = np.argsort(abs_error)[-20:]
+    
+    # Create a list of dictionaries for the 20 worst predictions
+    worst_images_info = []
+    for idx in worst_indices:
+        worst_images_info.append({
+            'pred_score': all_probs_ar[idx],
+            'label': all_labels_ar[idx],
+            'img_path': img_paths[idx]
+        })
+    
+    return {f'{test_type}_SRCC': test_srcc, f'{test_type}_PLCC': test_plcc, f'worst_images': worst_images_info}
 
 
 class ModelTrainer:
@@ -93,9 +131,10 @@ class ModelTrainer:
         self.results = []
         self.model_predict = model_predict
 
-        self.save_every_k_epoch = 10
+        self.save_every_k_epoch = 2
 
         self.model_folder = os.path.join(data_folder, "experiments", model_name)
+        shutil.rmtree(self.model_folder, ignore_errors=True)
         
         self.metrics_path = os.path.join(self.model_folder, f"metrics.csv")
         self.weights_folder =  os.path.join(self.model_folder, "weights")
@@ -103,20 +142,51 @@ class ModelTrainer:
 
     
 
+    # def run(self):
+    #     since = time.time()
+        
+    #     for epoch in range(1, self.num_epochs + 1):
+    #         print(f'Epoch {epoch}/{self.num_epochs - 1}')
+    #         print('-' * 10)
+    #         self.model, train_metrics, epoch_loss = self.train_model(epoch)
+    #         self.model, val_metrics = self.val_model_pytorch()
+    #         epoch_results = {"epoch": epoch, "train_epoch_loss": epoch_loss, **train_metrics, **val_metrics}
+    #         print(epoch_results)
+    #         self.results.append(epoch_results)
+    #         pd.DataFrame(self.results).to_csv(self.metrics_path, index=False)
+            
+    #         if epoch % self.save_every_k_epoch == 0:
+    #             torch.save(self.model.state_dict(), f"{self.weights_folder}/model_{epoch}.pt")
+
+
     def run(self):
         since = time.time()
-        
         for epoch in range(1, self.num_epochs + 1):
             print(f'Epoch {epoch}/{self.num_epochs - 1}')
             print('-' * 10)
+            epoch_folder =  os.path.join(self.model_folder, f"epoch_{epoch}")
+            os.makedirs(epoch_folder)
+            
             self.model, train_metrics, epoch_loss = self.train_model(epoch)
             self.model, val_metrics = self.val_model_pytorch()
             epoch_results = {"epoch": epoch, "train_epoch_loss": epoch_loss, **train_metrics, **val_metrics}
+            
+            # Save worst images for training and validation
+            log_images([item["img_path"] for item in train_metrics["worst_images"]],
+                       [f"Pred: {item['pred_score']:.2f}, Label: {item['label']:.2f}" for item in train_metrics["worst_images"]],
+                       os.path.join(epoch_folder, f"worst_train_images_{epoch}.png"))
+            
+            log_images([item["img_path"] for item in train_metrics["worst_images"]],
+                       [f'Pred: {item["pred_score"]:.2f}, Label: {item["label"]:.2f}' for item in val_metrics["worst_images"]],
+                       os.path.join(epoch_folder, f"worst_val_images_{epoch}.png"))
+            
             print(epoch_results)
             self.results.append(epoch_results)
             pd.DataFrame(self.results).to_csv(self.metrics_path, index=False)
+            
             if epoch % self.save_every_k_epoch == 0:
-                torch.save(self.model.state_dict(), f"{self.weights_folder}/model_{epoch}.pt")
+                
+                torch.save(self.model.state_dict(), os.path.join(epoch_folder, f"model.pt"))
 
 
     def train_model(self, epoch):
@@ -148,7 +218,7 @@ class ModelTrainer:
         
         epoch_loss = running_loss / len(self.train_ds)
         
-        metrics = calculate_metrics(all_labels, all_probs, "train")
+        metrics = calculate_metrics(all_labels, all_probs, all_paths, "train")
         return self.model, metrics, epoch_loss
                     
 
@@ -169,5 +239,5 @@ class ModelTrainer:
             all_probs.extend(probs.detach().cpu().numpy())
             all_paths.extend(paths)
 
-        metrics_data = calculate_metrics(all_labels, all_probs, "val")
+        metrics_data = calculate_metrics(all_labels, all_probs, all_paths, "val")
         return self.model, metrics_data
